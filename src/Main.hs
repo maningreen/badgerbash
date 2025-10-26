@@ -5,6 +5,7 @@ import Data.Maybe (mapMaybe)
 import GHC.IO.Handle (hGetContents)
 import GHC.IO.Handle.FD (openFile)
 import GHC.IO.IOMode (IOMode (ReadMode))
+import qualified Data.Vector as V
 import Text.Read (readMaybe)
 
 data WordItem = WordItem
@@ -12,9 +13,10 @@ data WordItem = WordItem
   , _weight :: Float
   }
   deriving (Show)
-data WordBank = WordBank { 
-    _items :: [WordItem],
-    _totalWeight :: Float
+
+data WordBank = WordBank
+  { _items :: V.Vector WordItem
+  , _totalWeight :: Float
   }
   deriving (Show)
 
@@ -30,12 +32,15 @@ parseWordMaybe x = WordItem <$> word <*> weight
 
 parseWordBank :: String -> WordBank
 parseWordBank x = WordBank items total
-  where
-    items = mapMaybe parseWordMaybe $ lines x
-    total = sum . map _weight $ items
+ where
+  items = V.fromList . mapMaybe parseWordMaybe $ lines x
+  total = sum . V.map _weight $ items
 
 readWordBank :: FilePath -> IO WordBank
-readWordBank x = fmap (parseWordBank) . hGetContents =<< openFile x ReadMode
+readWordBank x = fmap parseWordBank . hGetContents =<< openFile x ReadMode
+
+-- pickItem :: StdGen -> WordBank -> String
+-- pickItem gen bank
 
 main :: IO ()
 main = do
