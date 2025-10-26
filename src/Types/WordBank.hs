@@ -41,5 +41,11 @@ pickRandomItemWeighted gen bank = case getItemFromWeight chosenWeight bank of
  where
   (chosenWeight, next) = randomR (0, _totalWeight bank) gen :: (Float, StdGen)
 
+-- this function never ends, calling itself forever
+getRandomWords :: StdGen -> WordBank -> [WordItem]
+getRandomWords gen bank = item:(getRandomWords nextGen bank)
+  where
+    (item, nextGen) = pickRandomItemWeighted gen bank
+
 wordBankPath :: FilePath
 wordBankPath = "wordbank"
