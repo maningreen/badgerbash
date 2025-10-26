@@ -1,31 +1,41 @@
 module Main (main) where
-import GHC.IO.IOMode (IOMode(ReadMode))
-import GHC.IO.Handle.FD (openFile)
-import GHC.IO.Handle (hGetContents)
 
-data WordItem = WordItem {
-    _word :: String,
-    _weight :: Float
-  } deriving (Show)
-type WordBank = [WordItem]
+import Data.List ((!?))
+import Data.Maybe (mapMaybe)
+import GHC.IO.Handle (hGetContents)
+import GHC.IO.Handle.FD (openFile)
+import GHC.IO.IOMode (IOMode (ReadMode))
+import Text.Read (readMaybe)
+
+data WordItem = WordItem
+  { _word :: String
+  , _weight :: Float
+  }
+  deriving (Show)
+data WordBank = WordBank { 
+    _items :: [WordItem],
+    _totalWeight :: Float
+  }
+  deriving (Show)
 
 wordBankPath :: FilePath
 wordBankPath = "wordbank"
 
--- {-# WARNING Impartial function #-}
-parseWord :: String -> WordItem
-parseWord x = WordItem {
-    _word = word,
-    _weight = read weightStr 
-  }
-  where
-    [word, weightStr] = words x
+parseWordMaybe :: String -> Maybe WordItem
+parseWordMaybe x = WordItem <$> word <*> weight
+ where
+  broken = words x
+  word = broken !? 0
+  weight = (broken !? 1) >>= readMaybe
 
 parseWordBank :: String -> WordBank
-parseWordBank = map parseWord . lines
+parseWordBank x = WordBank items total
+  where
+    items = mapMaybe parseWordMaybe $ lines x
+    total = sum . map _weight $ items
 
 readWordBank :: FilePath -> IO WordBank
-readWordBank x = fmap (parseWordBank) . hGetContents =<< openFile x ReadMode  
+readWordBank x = fmap (parseWordBank) . hGetContents =<< openFile x ReadMode
 
 main :: IO ()
 main = do
