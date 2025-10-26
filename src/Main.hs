@@ -62,7 +62,7 @@ pickItem :: StdGen -> WordBank -> (WordItem, StdGen)
 pickItem gen bank = case getItemFromWeight chosenWeight bank of
   Just x -> (x, next)
  where
-  (chosenWeight, next) = randomR (_weight . V.head . _items $ bank, _totalWeight bank) gen :: (Float, StdGen)
+  (chosenWeight, next) = randomR (0, _totalWeight bank) gen :: (Float, StdGen)
 
 main :: IO ()
 main = do
