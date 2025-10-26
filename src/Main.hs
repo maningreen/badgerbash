@@ -7,6 +7,7 @@ import GHC.IO.Handle.FD (openFile)
 import GHC.IO.IOMode (IOMode (ReadMode))
 import qualified Data.Vector as V
 import Text.Read (readMaybe)
+import System.Random (StdGen, Random (randomR), getStdGen)
 
 data WordItem = WordItem
   { _word :: String
@@ -39,10 +40,17 @@ parseWordBank x = WordBank items total
 readWordBank :: FilePath -> IO WordBank
 readWordBank x = fmap parseWordBank . hGetContents =<< openFile x ReadMode
 
--- pickItem :: StdGen -> WordBank -> String
--- pickItem gen bank
+pickItem :: StdGen -> WordBank -> (WordItem, StdGen)
+pickItem gen bank = (chosenX, next)
+  where
+    maxI = V.length $ _items bank
+    chosenX = (_items bank) V.! chosenI 
+    (chosenI, next) = randomR (0, maxI) gen :: (Int, StdGen)
 
 main :: IO ()
 main = do
-  readWordBank wordBankPath >>= print
+  x <- readWordBank wordBankPath
+  print x
+  gen <- getStdGen
+  print $ pickItem gen x
   return ()
