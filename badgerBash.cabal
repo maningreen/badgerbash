@@ -56,9 +56,16 @@ extra-source-files: Types/Word.hs
 common warnings
     ghc-options: -Wall
 
+common brick
+  ghc-options: -threaded
+  build-depends:
+    brick,
+    vty >= 6.0,
+    vty-unix
+
 executable badgerBash
-    -- Import common warning flags.
-    import:           warnings
+    -- Import common warning flags, as well as config for brick
+    import:           warnings, brick
 
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
@@ -72,7 +79,7 @@ executable badgerBash
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.20.2.0,
       random,
-      vector
+      vector,
 
     -- Directories containing source files.
     hs-source-dirs: src
