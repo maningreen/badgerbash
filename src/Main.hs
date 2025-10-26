@@ -1,15 +1,20 @@
 module Main (main) where
 
-import System.Random (getStdGen)
+import System.Random (getStdGen, StdGen)
 import Types.WordBank
-import Brick (App(..), str, halt, neverShowCursor, attrMap, fg, attrName, defaultMain)
+import Brick (App(..), str, halt, neverShowCursor, attrMap, fg, attrName, defaultMain, vBox)
 import Graphics.Vty (defAttr, white)
-import Brick.Widgets.Border (border)
-import Brick.Widgets.Center (center)
+import Control.Monad (void)
+import Types.WordItem (WordItem(_word))
 
-app :: App () () ()
+data State = State {
+    _wordBank :: WordBank
+  , _stdGen :: StdGen
+  }
+
+app :: App State () ()
 app = App {
-    appDraw = const . return . center . border $ str "cool"
+    appDraw = draw
   , appChooseCursor = neverShowCursor
   , appHandleEvent = const halt
   , appStartEvent = return ()
@@ -17,11 +22,14 @@ app = App {
       (attrName "default", fg white)
     ]
   }
+  where
+    draw (State x gen) = return . vBox $ take 8 . map (str . _word) $ getRandomWords gen x
 
 main :: IO ()
 main = do
   x <- readWordBank wordBankPath
   gen <- getStdGen
-  print $ pickRandomItemWeighted gen x
-  defaultMain app ()
-  return ()
+  void . defaultMain app $ State {
+      _wordBank = x
+    , _stdGen = gen
+    }
