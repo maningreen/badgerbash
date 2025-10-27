@@ -1,5 +1,8 @@
+-- a module full of useful, pure functions
 module Util where
 import Data.Text (Text, unsnoc, empty)
+import qualified Data.Text as T
+import Brick (Widget, (<+>), AttrName, withAttr, str)
 
 foldFind :: (b -> a -> (b, Bool)) -> b -> [a] -> (b, Maybe a)
 foldFind _ acc [] = (acc, Nothing)
@@ -17,3 +20,23 @@ textInitSafe :: Text -> Text
 textInitSafe i = case unsnoc i of
   Nothing -> empty 
   Just (t, _) -> t
+
+applyAttrToString :: (Char -> AttrName) -> Text -> (Text, [AttrName])
+applyAttrToString f s = (s, T.foldr g [] s)
+  where
+    g x a = f x : a
+
+applyAttrToStringW :: (Char -> AttrName) -> String -> Widget n
+applyAttrToStringW _ [] = str ""
+applyAttrToStringW f (x:xs) = withAttr attr (str $ return x) <+> applyAttrToStringW f xs
+  where
+    attr = f x
+
+breakChunks :: Int -> [a] -> [[a]]
+breakChunks _ [] = []
+breakChunks x xs = pre : breakChunks x post 
+  where
+    (pre, post) = splitAt x xs
+
+wrapString :: Int -> String -> [String]
+wrapString = breakChunks
