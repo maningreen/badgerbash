@@ -80,6 +80,7 @@ executable badgerBash
     build-depends:    base ^>=4.20.2.0,
       random,
       vector,
+      text
 
     -- Directories containing source files.
     hs-source-dirs: src
