@@ -26,9 +26,9 @@ applyAttrToString f s = (s, T.foldr g [] s)
   where
     g x a = f x : a
 
-applyAttrToStringW :: (a -> AttrName) -> [a] -> Widget n
-applyAttrToStringW _ [] = str ""
-applyAttrToStringW f (x:xs) = withAttr attr (str $ return x) <+> applyAttrToStringW f xs
+applyAttrToListW :: (a -> Widget n) -> (a -> AttrName) -> [a] -> Widget n
+applyAttrToListW _ _ [] = str ""
+applyAttrToListW g f (x:xs) = withAttr attr (g x) <+> applyAttrToListW g f xs
   where
     attr = f x
 
