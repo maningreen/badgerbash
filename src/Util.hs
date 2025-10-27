@@ -7,3 +7,7 @@ foldFind f acc (x : xs)
   | otherwise = foldFind f acc' xs
  where
   (acc', done) = f acc x
+
+initSafe :: [a] -> [a]
+initSafe [] = []
+initSafe xs = init xs
