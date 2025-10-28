@@ -1,19 +1,17 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (VtyEvent), EventM, attrMap, attrName, defaultMain, fg, hLimit, halt, modify, neverShowCursor, strWrap, vLimit, attrName, AttrName, str)
+import Brick (App (..), BrickEvent (VtyEvent), EventM, ViewportType (Vertical), Widget, attrMap, attrName, defaultMain, fg, hBox, hLimit, halt, modify, neverShowCursor, str, vBox, vLimit, viewport, withAttr)
 import Brick.Widgets.Center (center)
 import Control.Monad (void)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import qualified Data.Text as T
-import Data.Text (Text)
-import Util (textInitSafe, applyAttrToListW)
+import Util (snoc, breakChunks, zipWithM, initSafe)
 
 data State = State
   { _words :: [String]
-  , _typed :: Text
+  , _typed :: String
   }
 
 app :: App State () ()
@@ -33,31 +31,31 @@ app =
             ]
     }
  where
-  draw s = typedWid : [wordsWid]
+  draw s = return wordsWid
    where
-    wordsWid = center . vLimit height . hLimit width . strWrap $ w
+    wordsWid = style . viewport () Vertical . vBox . map hBox . breakChunks width . zipWithM f theString $ unpacked :: Widget ()
      where
-      width = 100
-      height = 3
-    w = unwords . take 100 $ _words s
+      style = center . hLimit width . vLimit height
+      f (Just a) (Just b) = withAttr (if a == b then attrName "typed" else attrName "wrong") $ str $ return a
+      f (Just a) (Nothing) = withAttr (attrName "default") . str $ return a
+      f (Nothing) (Just b) = withAttr (attrName "wrong") . str $ return b
+      f _ _ = undefined
+    width = 100
+    height = 3
+    theWords = take 200 $ _words s
+    theString = unwords theWords
     typed = _typed s
-    typedWid = applyAttrToListW (str . return . snd) f zipped
-     where
-      zipped = zip w $ T.unpack typed
-      f :: (Char, Char) -> AttrName
-      f (x, y)
-        | x == y = attrName "typed"
-        | otherwise = attrName "wrong"
+    unpacked = typed
   handleEvent :: BrickEvent () () -> EventM () State ()
   handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
   handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
   handleEvent _ = halt
 
 addCharToTyped :: Char -> State -> State
-addCharToTyped c (State w typed) = State w $ T.snoc typed c
+addCharToTyped c (State w typed) = State w $ snoc typed c
 
 dropLastTyped :: State -> State
-dropLastTyped (State w typed) = State w $ textInitSafe typed
+dropLastTyped (State w typed) = State w $ initSafe typed
 
 main :: IO ()
 main = do
@@ -66,5 +64,5 @@ main = do
   void . defaultMain app $
     State
       { _words = map _word $ getRandomWords gen x
-      , _typed = T.empty 
+      , _typed = []
       }
