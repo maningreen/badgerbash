@@ -36,7 +36,7 @@ breakChunks :: Int -> [a] -> [[a]]
 breakChunks _ [] = []
 breakChunks x xs = pre : breakChunks x post 
   where
-    (pre, post) = splitAt x xs
+    (pre, post) = splitAt (x - 1) xs
 
 wrapString :: Int -> String -> [String]
 wrapString = breakChunks
