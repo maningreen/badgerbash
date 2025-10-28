@@ -40,3 +40,13 @@ breakChunks x xs = pre : breakChunks x post
 
 wrapString :: Int -> String -> [String]
 wrapString = breakChunks
+
+-- merge two lists, where xs has priority of ys
+-- returns a new list of length = max (length xs) (length ys)
+-- examples:
+-- >merge [3, 4, 5, 7] [3, 5, 19, 23, 22]
+-- [3, 4, 5, 7, 22]
+merge :: [a] -> [a] -> [a]
+merge (x:xs) (_:ys) = x : merge xs ys
+merge [] ys = ys
+merge xs _ = xs
