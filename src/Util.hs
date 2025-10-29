@@ -2,8 +2,6 @@
 module Util where
 
 import Brick (AttrName, Widget, str, withAttr, (<+>))
-import Data.Text (Text, empty, unsnoc)
-import qualified Data.Text as T
 
 foldFind :: (b -> a -> (b, Bool)) -> b -> [a] -> (b, Maybe a)
 foldFind _ acc [] = (acc, Nothing)
@@ -13,19 +11,20 @@ foldFind f acc (x : xs)
  where
   (acc', done) = f acc x
 
+-- a full version of the impartial function `init`
+-- ex:
+-- ```haskell
+-- >initSafe [3, 4, 5, 5]
+-- [3, 4, 5]
+-- ```
+-- ```haskell
+-- >initSafe []
+-- []
+-- ```
 initSafe :: [a] -> [a]
 initSafe [] = []
 initSafe xs = init xs
 
-textInitSafe :: Text -> Text
-textInitSafe i = case unsnoc i of
-  Nothing -> empty
-  Just (t, _) -> t
-
-applyAttrToString :: (Char -> AttrName) -> Text -> (Text, [AttrName])
-applyAttrToString f s = (s, T.foldr g [] s)
- where
-  g x a = f x : a
 
 applyAttrToListW :: (a -> Widget n) -> (a -> AttrName) -> [a] -> Widget n
 applyAttrToListW _ _ [] = str ""
@@ -42,16 +41,6 @@ breakChunks x xs = pre : breakChunks x post
 wrapString :: Int -> String -> [String]
 wrapString = breakChunks
 
--- merge two lists, where xs has priority of ys
--- returns a new list of length = max (length xs) (length ys)
--- examples:
--- >merge [3, 4, 5, 7] [3, 5, 19, 23, 22]
--- [3, 4, 5, 7, 22]
-merge :: [a] -> [a] -> [a]
-merge (x : xs) (_ : ys) = x : merge xs ys
-merge [] ys = ys
-merge xs _ = xs
-
 mapSnd ::  (b -> c) -> (a, b) -> (a, c)
 mapSnd f (a, b) = (a, f b)
 
@@ -63,3 +52,16 @@ zipWithM _ [] [] = []
 zipWithM f (x : xs) (y : ys) = f (Just x) (Just y) : zipWithM f xs ys
 zipWithM f [] (y : ys) = f Nothing (Just y) : zipWithM f [] ys
 zipWithM f (x : xs) [] = f (Just x) Nothing : zipWithM f xs []
+
+mergeb :: (a -> b -> b) -> [a] -> [b] -> [b]
+mergeb f (x:xs) (y:ys) = f x y : mergeb f xs ys
+mergeb _ [] ys = ys
+mergeb _ _ [] = undefined
+
+mergea :: (a -> b -> a) -> [a] -> [b] -> [a]
+mergea f (x:xs) (y:ys) = f x y : mergea f xs ys
+mergea _ xs [] = xs
+mergea _ [] _ = undefined
+
+snoc :: [a] -> a -> [a]
+snoc a = (a ++) . return
