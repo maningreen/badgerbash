@@ -79,3 +79,16 @@ merge [] ys = ys
 
 snoc :: [a] -> a -> [a]
 snoc a = (a ++) . return
+
+fromBool :: Num a => Bool -> a
+fromBool True = 1
+fromBool _ = 0
+
+count :: (Eq a, Foldable t) => a -> t a -> Int
+count x xs = foldl f 0 xs
+  where
+    f acc = (acc +) . fromBool . (x ==)
+
+(//) :: Integral a => a -> a -> a
+_ // 0 = 0
+a // b = a `div` b 
