@@ -1,13 +1,15 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (VtyEvent), EventM, ViewportType (Vertical), Widget, attrMap, attrName, defaultMain, fg, hBox, hLimit, halt, modify, str, vBox, vLimit, viewport, withAttr, showCursor, Location (Location), showFirstCursor)
+import Brick (App (..), BrickEvent (VtyEvent), EventM, Location (Location), ViewportType (Vertical), Widget, attrMap, attrName, defaultMain, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, viewport, withAttr, emptyWidget)
 import Brick.Widgets.Center (center)
 import Control.Monad (void)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import Util (snoc, breakChunks, zipWithM, initSafe)
+import Util (breakChunks, initSafe, snoc, zipWithM, merge)
+import Data.List (intercalate, intersperse)
+import Type.Reflection (rnfSomeTypeRep)
 
 data State = State
   { _words :: [String]
@@ -17,7 +19,7 @@ data State = State
 app :: App State () ()
 app =
   App
-    { appDraw = draw
+    { appDraw = return . draw
     , appChooseCursor = showFirstCursor
     , appHandleEvent = handleEvent
     , appStartEvent = return ()
@@ -31,24 +33,29 @@ app =
             ]
     }
  where
-  draw s = return wordsWid
+  draw s = wordsWid
    where
-    wordsWid = style . viewport () Vertical . vBox . map hBox . breakChunks width . zipWithM f theString $ unpacked :: Widget ()
+    wordsWid = center . cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed 
      where
-      style = center . cursor . hLimit width . vLimit height
+      cursor :: Widget () -> Widget ()
+      cursor x = Brick.showCursor () (Location (length typed `mod` width, length typed `div` width)) x
+      space = intercalate [str " "]
+      wordsToBeDisplayed = zipWithM g theWords $ words typed
         where
-          cursor :: Widget () -> Widget ()
-          cursor x = Brick.showCursor () (Location (length typed `mod` width, length typed `div` width)) x
-      f (Just a) (Just b) = withAttr (if a == b then attrName "typed" else attrName "wrong") $ str $ return a
-      f (Just a) (Nothing) = withAttr (attrName "default") . str $ return a
-      f (Nothing) (Just b) = withAttr (attrName "wrong") . str $ return b
-      f _ _ = undefined
+          g (Just a) (Just b) = Just $ zipWithM f a b
+          g Nothing (Just a) = Just . map ((withAttr (attrName "wrong")) . str . return) $ a 
+          g (Just a) (Nothing) = Just . map (withAttr (attrName "default") . str . return) $ a
+          g Nothing Nothing = Nothing
+
+      f (Just a) (Just b) = Just . (withAttr (if a == b then attrName "typed" else attrName "wrong") . str . return) $ a
+      f (Just a) (Nothing) = Just . (withAttr (attrName "default") . str . return) $ a
+      f (Nothing) (Just b) = Just . (withAttr (attrName "wrong") . str . return) $ b
+      f _ _ = Nothing
     width = 100
     height = 3
     theWords = take 200 $ _words s
-    theString = unwords theWords
+    -- theString = unwords theWords
     typed = _typed s
-    unpacked = typed
   handleEvent :: BrickEvent () () -> EventM () State ()
   handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
   handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped

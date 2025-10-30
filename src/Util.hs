@@ -47,11 +47,20 @@ mapSnd f (a, b) = (a, f b)
 mapFst :: (a -> c) -> (a, b) -> (c, b)
 mapFst f (a, b) = (f a, b)
 
-zipWithM :: (Maybe a -> Maybe b -> c) -> [a] -> [b] -> [c]
+zipWithM :: (Maybe a -> Maybe b -> Maybe c) -> [a] -> [b] -> [c]
 zipWithM _ [] [] = []
-zipWithM f (x : xs) (y : ys) = f (Just x) (Just y) : zipWithM f xs ys
-zipWithM f [] (y : ys) = f Nothing (Just y) : zipWithM f [] ys
-zipWithM f (x : xs) [] = f (Just x) Nothing : zipWithM f xs []
+
+zipWithM f (x : xs) (y : ys) = case f (Just x) (Just y) of 
+  Just gamma -> gamma : zipWithM f xs ys
+  Nothing -> zipWithM f xs ys
+
+zipWithM f [] (y : ys) = case f Nothing (Just y) of 
+  Just gamma -> gamma : zipWithM f [] ys
+  Nothing -> zipWithM f [] ys
+
+zipWithM f (x : xs) [] = case f (Just x) Nothing of 
+  Just gamma -> gamma : zipWithM f xs []
+  Nothing -> zipWithM f xs []
 
 mergeb :: (a -> b -> b) -> [a] -> [b] -> [b]
 mergeb f (x:xs) (y:ys) = f x y : mergeb f xs ys
@@ -62,6 +71,11 @@ mergea :: (a -> b -> a) -> [a] -> [b] -> [a]
 mergea f (x:xs) (y:ys) = f x y : mergea f xs ys
 mergea _ xs [] = xs
 mergea _ [] _ = undefined
+
+merge :: [a] -> [a] -> [a]
+merge (x:xs) (_:ys) = x : merge xs ys
+merge xs [] = xs
+merge [] ys = ys
 
 snoc :: [a] -> a -> [a]
 snoc a = (a ++) . return
