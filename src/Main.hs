@@ -1,18 +1,18 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (VtyEvent, AppEvent), EventM, Location (Location), Widget, attrMap, attrName, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, customMain, (<=>), (<+>))
+import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center)
-import Control.Monad (void, forever)
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Monad (forever, void)
+import Data.List (intercalate)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
+import qualified Graphics.Vty as V
+import qualified Graphics.Vty.Platform.Unix as V.Vty
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import Util (breakChunks, initSafe, snoc, zipWithM, count, (//))
-import Data.List (intercalate)
-import qualified Graphics.Vty as V
-import qualified Graphics.Vty.Platform.Unix as V.Vty
-import Brick.BChan (newBChan, writeBChan)
-import Control.Concurrent (forkIO, threadDelay)
+import Util (breakChunks, count, initSafe, roundTo, snoc, zipWithM, trim)
 
 data State = State
   { _words :: [String]
@@ -40,19 +40,23 @@ app =
   draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
    where
     secondsWid = str . show $ seconds
-    wmpWid = str . show . (// seconds) . count ' ' $ typed 
-    wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed 
+    wmpWid
+      | seconds == 0 = str "0"
+      | otherwise = str . show . roundTo (1 :: Int) $ wpm
+     where
+      totalWords = count ' ' typed
+      wpm = 60 * (fromIntegral totalWords) / fromIntegral seconds :: Float
+    wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
      where
       cursor :: Widget () -> Widget ()
-      cursor x = Brick.showCursor () (Location (length typed `mod` width, length typed `div` width)) x
+      cursor x = Brick.showCursor () (Location (length typed `mod` (width - 1), length typed `div` (width - 1))) x
       space = intercalate [str " "]
       wordsToBeDisplayed = zipWithM g theWords $ words typed
-        where
-          g (Just a) (Just b) = Just $ zipWithM f a b
-          g Nothing (Just a) = Just . map ((withAttr (attrName "wrong")) . str . return) $ a 
-          g (Just a) (Nothing) = Just . map (withAttr (attrName "default") . str . return) $ a
-          g Nothing Nothing = Nothing
-
+       where
+        g (Just a) (Just b) = Just $ zipWithM f a b
+        g Nothing (Just a) = Just . map ((withAttr (attrName "wrong")) . str . return) $ a
+        g (Just a) (Nothing) = Just . map (withAttr (attrName "default") . str . return) $ a
+        g Nothing Nothing = Nothing
       f (Just a) (Just b) = Just . (withAttr (if a == b then attrName "typed" else attrName "wrong") . str . return) $ a
       f (Just a) (Nothing) = Just . (withAttr (attrName "default") . str . return) $ a
       f (Nothing) (Just b) = Just . (withAttr (attrName "wrong") . str . return) $ b
@@ -63,28 +67,30 @@ app =
     typed = _typed s
     seconds = _seconds s
   handleEvent :: BrickEvent () CustomEvents -> EventM () State ()
-  handleEvent (AppEvent Tick) = modify tickSeconds 
+  handleEvent (AppEvent Tick) = modify tickSeconds
   handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
   handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
   handleEvent _ = halt
 
 addCharToTyped :: Char -> State -> State
-addCharToTyped c (State w typed s) = State w (snoc typed c) s
+addCharToTyped c (State w typed s) = State w (trim $ snoc typed c) s
 
 dropLastTyped :: State -> State
 dropLastTyped (State w typed s) = State w (initSafe typed) s
 
 tickSeconds :: State -> State
-tickSeconds (State w t s) = State w t $ s + 1
+tickSeconds (State w t s)
+  | null t = State w t 0
+  | otherwise = State w t $ s + 1
 
 data CustomEvents = Tick
 
-myMain :: Ord n => App s CustomEvents n -> s -> IO s
+myMain :: (Ord n) => App s CustomEvents n -> s -> IO s
 myMain a start = do
   let buildVty = V.Vty.mkVty V.defaultConfig
   vty <- buildVty
   chan <- newBChan 20
-  void . forkIO . forever $ do 
+  void . forkIO . forever $ do
     writeBChan chan Tick
     threadDelay 1000000
   customMain vty buildVty (Just chan) a start

@@ -2,6 +2,7 @@
 module Util where
 
 import Brick (AttrName, Widget, str, withAttr, (<+>))
+import GHC.Float (floatToDigits)
 
 foldFind :: (b -> a -> (b, Bool)) -> b -> [a] -> (b, Maybe a)
 foldFind _ acc [] = (acc, Nothing)
@@ -24,7 +25,6 @@ foldFind f acc (x : xs)
 initSafe :: [a] -> [a]
 initSafe [] = []
 initSafe xs = init xs
-
 
 applyAttrToListW :: (a -> Widget n) -> (a -> AttrName) -> [a] -> Widget n
 applyAttrToListW _ _ [] = str ""
@@ -92,3 +92,12 @@ count x xs = foldl f 0 xs
 (//) :: Integral a => a -> a -> a
 _ // 0 = 0
 a // b = a `div` b 
+
+roundTo :: (RealFrac a, Integral b) => b -> a -> a
+roundTo n x = (fromInteger . round $ x * (10 ^ n)) / (10.0 ^^ n)
+
+trim :: String -> String
+trim [] = []
+trim (' ':' ':xs) = ' ' : trim xs
+trim (' ':xs) = ' ' : trim xs
+trim (x:xs) = x : trim xs
