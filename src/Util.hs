@@ -95,3 +95,9 @@ a // b = a `div` b
 
 roundTo :: (RealFrac a, Integral b) => b -> a -> a
 roundTo n x = (fromInteger . round $ x * (10 ^ n)) / (10.0 ^^ n)
+
+trim :: String -> String
+trim [] = []
+trim (' ':' ':xs) = ' ' : trim xs
+trim (' ':xs) = ' ' : trim xs
+trim (x:xs) = x : trim xs
