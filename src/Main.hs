@@ -1,13 +1,13 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (VtyEvent, AppEvent), EventM, Location (Location), Widget, attrMap, attrName, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, customMain, (<=>), (<+>))
+import Brick (App (..), BrickEvent (VtyEvent, AppEvent), EventM, Location (Location), Widget, attrMap, attrName, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, customMain, withAttr, (<=>), (<+>))
 import Brick.Widgets.Center (center)
 import Control.Monad (void, forever)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import Util (breakChunks, initSafe, snoc, zipWithM, count, (//))
+import Util (breakChunks, initSafe, snoc, zipWithM, count, roundTo)
 import Data.List (intercalate)
 import qualified Graphics.Vty as V
 import qualified Graphics.Vty.Platform.Unix as V.Vty
@@ -40,11 +40,16 @@ app =
   draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
    where
     secondsWid = str . show $ seconds
-    wmpWid = str . show . (// seconds) . count ' ' $ typed 
+    wmpWid 
+      | seconds == 0 = str "0" 
+      | otherwise = str . show . roundTo 1 $ wpm
+        where
+          totalWords = count ' ' typed
+          wpm = 60 * (fromIntegral totalWords) / fromIntegral seconds :: Float
     wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed 
      where
       cursor :: Widget () -> Widget ()
-      cursor x = Brick.showCursor () (Location (length typed `mod` width, length typed `div` width)) x
+      cursor x = Brick.showCursor () (Location (length typed `mod` (width - 1), length typed `div` (width))) x
       space = intercalate [str " "]
       wordsToBeDisplayed = zipWithM g theWords $ words typed
         where
@@ -75,7 +80,9 @@ dropLastTyped :: State -> State
 dropLastTyped (State w typed s) = State w (initSafe typed) s
 
 tickSeconds :: State -> State
-tickSeconds (State w t s) = State w t $ s + 1
+tickSeconds (State w t s) 
+  | null t = State w t 0
+  | otherwise = State w t $ s + 1
 
 data CustomEvents = Tick
 
