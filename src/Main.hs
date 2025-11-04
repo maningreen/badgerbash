@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>), get)
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center)
 import Control.Concurrent (forkIO, threadDelay)
@@ -12,12 +12,15 @@ import qualified Graphics.Vty.Platform.Unix as V.Vty
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import Util (breakChunks, count, initSafe, roundTo, snoc, zipWithM, trim)
+import Util (breakChunks, initSafe, roundTo, snoc, zipWithM, trim)
+
+type Time = Int
 
 data State = State
   { _words :: [String]
   , _typed :: String
-  , _seconds :: Int
+  , _seconds :: Time
+  , _target :: Either Time Int -- Either Time or Words
   }
 
 app :: App State CustomEvents ()
@@ -42,10 +45,8 @@ app =
     secondsWid = str . show $ seconds
     wmpWid
       | seconds == 0 = str "0"
-      | otherwise = str . show . roundTo (1 :: Int) $ wpm
+      | otherwise = str . show . roundTo (1 :: Int) $ getWpm s
      where
-      totalWords = count ' ' typed
-      wpm = 60 * (fromIntegral totalWords) / fromIntegral seconds :: Float
     wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
      where
       cursor :: Widget () -> Widget ()
@@ -67,25 +68,40 @@ app =
     typed = _typed s
     seconds = _seconds s
   handleEvent :: BrickEvent () CustomEvents -> EventM () State ()
-  handleEvent (AppEvent Tick) = modify tickSeconds
+  handleEvent (AppEvent Tick) = do
+    timesUp <- getGamesUp <$> get
+    if not timesUp 
+    then modify tickSeconds
+    else halt
+
   handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
   handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
   handleEvent _ = halt
 
 addCharToTyped :: Char -> State -> State
-addCharToTyped c (State w typed s) = State w (trim $ snoc typed c) s
+addCharToTyped c (State w typed s t) = State w (trim $ snoc typed c) s t
 
 dropLastTyped :: State -> State
-dropLastTyped (State w typed s) = State w (initSafe typed) s
+dropLastTyped (State w typed s t) = State w (initSafe typed) s t
+
+getGamesUp :: State -> Bool
+getGamesUp (State _ _ seconds (Left time)) = seconds >= time
+getGamesUp (State _ typed _ (Right wordCount)) = length (words typed) >= wordCount 
 
 tickSeconds :: State -> State
-tickSeconds (State w t s)
-  | null t = State w t 0
-  | otherwise = State w t $ s + 1
+tickSeconds (State w t s target)
+  | null t = State w t 0 target
+  | otherwise = State w t (s + 1) target
+
+getWpm :: State -> Float
+getWpm state 
+  | isNaN wpm || isInfinite wpm = 0
+  | otherwise                   = wpm
+  where wpm = 60 * (fromIntegral . length . words $ _typed state) / (fromIntegral . _seconds $ state)
 
 data CustomEvents = Tick
 
-myMain :: (Ord n) => App s CustomEvents n -> s -> IO s
+myMain :: App s CustomEvents () -> s -> IO s
 myMain a start = do
   let buildVty = V.Vty.mkVty V.defaultConfig
   vty <- buildVty
@@ -99,9 +115,14 @@ main :: IO ()
 main = do
   x <- readWordBank wordBankPath
   gen <- getStdGen
-  void . myMain app $
+  state <- myMain app $
     State
       { _words = map _word $ getRandomWords gen x
       , _typed = []
       , _seconds = 0
+      , _target = Left 15
       }
+  putStr "WPM: "
+  print $ getWpm  state
+  putStr "How many words you typed: "
+  print . length . words $ _typed state

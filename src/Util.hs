@@ -2,7 +2,6 @@
 module Util where
 
 import Brick (AttrName, Widget, str, withAttr, (<+>))
-import GHC.Float (floatToDigits)
 
 foldFind :: (b -> a -> (b, Bool)) -> b -> [a] -> (b, Maybe a)
 foldFind _ acc [] = (acc, Nothing)
