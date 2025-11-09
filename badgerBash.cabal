@@ -71,7 +71,11 @@ executable badgerBash
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules: Types.WordItem Types.WordBank Util
+    other-modules: 
+      Types.WordItem 
+      Types.WordBank 
+      State 
+      Util
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

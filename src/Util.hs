@@ -8,8 +8,8 @@ foldFind _ acc [] = (acc, Nothing)
 foldFind f acc (x : xs)
   | done = (acc', Just x)
   | otherwise = foldFind f acc' xs
-  where
-    (acc', done) = f acc x
+ where
+  (acc', done) = f acc x
 
 -- a full version of the impartial function `init`
 -- ex:
@@ -28,14 +28,14 @@ initSafe xs = init xs
 applyAttrToListW :: (a -> Widget n) -> (a -> AttrName) -> [a] -> Widget n
 applyAttrToListW _ _ [] = str ""
 applyAttrToListW g f (x : xs) = withAttr attr (g x) <+> applyAttrToListW g f xs
-  where
-    attr = f x
+ where
+  attr = f x
 
 breakChunks :: Int -> [a] -> [[a]]
 breakChunks _ [] = []
 breakChunks x xs = pre : breakChunks x post
-  where
-    (pre, post) = splitAt (x - 1) xs
+ where
+  (pre, post) = splitAt (x - 1) xs
 
 wrapString :: Int -> String -> [String]
 wrapString = breakChunks
@@ -82,8 +82,8 @@ fromBool _ = 0
 
 count :: (Eq a, Foldable t) => a -> t a -> Int
 count x xs = foldl f 0 xs
-  where
-    f acc = (acc +) . fromBool . (x ==)
+ where
+  f acc = (acc +) . fromBool . (x ==)
 
 (//) :: (Integral a) => a -> a -> a
 _ // 0 = 0
@@ -97,3 +97,6 @@ trim [] = []
 trim (' ' : ' ' : xs) = ' ' : trim xs
 trim (' ' : xs) = ' ' : trim xs
 trim (x : xs) = x : trim xs
+
+log10 :: (Floating a) => a -> a
+log10 = logBase 10
