@@ -61,7 +61,8 @@ common brick
   build-depends:
     brick,
     vty >= 6.0,
-    vty-unix
+    vty-unix,
+    microlens
 
 executable badgerBash
     -- Import common warning flags, as well as config for brick
@@ -80,7 +81,6 @@ executable badgerBash
     build-depends:    base ^>=4.20.2.0,
       random,
       vector,
-      microlens
 
     -- Directories containing source files.
     hs-source-dirs: src
