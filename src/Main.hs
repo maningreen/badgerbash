@@ -1,18 +1,19 @@
 module Main (main) where
 
-import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>), get)
+import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
-import Data.List (intercalate)
+import Data.Function (on)
+import Data.List (intercalate, maximumBy)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import qualified Graphics.Vty as V
 import qualified Graphics.Vty.Platform.Unix as V.Vty
 import System.Random (getStdGen)
 import Types.WordBank
 import Types.WordItem (WordItem (_word))
-import Util (breakChunks, initSafe, roundTo, snoc, zipWithM, trim)
+import Util (breakChunks, initSafe, roundTo, snoc, trim, zipWithM)
 
 type Time = Int
 
@@ -43,14 +44,23 @@ app =
   draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
    where
     secondsWid = str . show $ seconds
-    wmpWid
-      | seconds == 0 = str "0"
-      | otherwise = str . show . roundTo (1 :: Int) $ getWpm s
-     where
+    wmpWid = str . show . roundTo (1 :: Int) $ getWpm s
+
     wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
      where
       cursor :: Widget () -> Widget ()
-      cursor x = Brick.showCursor () (Location (length typed `mod` (width - 1), length typed `div` (width - 1))) x
+      cursor x = Brick.showCursor () (Location (xPos, yPos)) x
+       where
+        xPos = index `mod` (width - 1)
+        yPos = index `div` (width - 1) :: Int
+        index
+         | null typedWords = 0
+         | otherwise = 
+          (length typedWords - 1) + 
+          (sum $ zipWith (on max length) (init typedWords) theWords) + 
+          length lastTypedWord + 
+          if last typed == ' ' then 1 else 0
+         where
       space = intercalate [str " "]
       wordsToBeDisplayed = zipWithM g theWords $ words typed
        where
@@ -66,14 +76,15 @@ app =
     height = 3
     theWords = take 200 $ _words s
     typed = _typed s
+    typedWords = words typed
+    lastTypedWord = last typedWords
     seconds = _seconds s
   handleEvent :: BrickEvent () CustomEvents -> EventM () State ()
   handleEvent (AppEvent Tick) = do
     timesUp <- getGamesUp <$> get
-    if not timesUp 
-    then modify tickSeconds
-    else halt
-
+    if not timesUp
+      then modify tickSeconds
+      else halt
   handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
   handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
   handleEvent _ = halt
@@ -86,7 +97,7 @@ dropLastTyped (State w typed s t) = State w (initSafe typed) s t
 
 getGamesUp :: State -> Bool
 getGamesUp (State _ _ seconds (Left time)) = seconds >= time
-getGamesUp (State _ typed _ (Right wordCount)) = length (words typed) >= wordCount 
+getGamesUp (State _ typed _ (Right wordCount)) = length (words typed) >= wordCount
 
 tickSeconds :: State -> State
 tickSeconds (State w t s target)
@@ -94,10 +105,11 @@ tickSeconds (State w t s target)
   | otherwise = State w t (s + 1) target
 
 getWpm :: State -> Float
-getWpm state 
+getWpm state
   | isNaN wpm || isInfinite wpm = 0
-  | otherwise                   = wpm
-  where wpm = 60 * (fromIntegral . length . words $ _typed state) / (fromIntegral . _seconds $ state)
+  | otherwise = wpm
+ where
+  wpm = 60 * (fromIntegral . length . words $ _typed state) / (fromIntegral . _seconds $ state)
 
 data CustomEvents = Tick
 
@@ -115,14 +127,15 @@ main :: IO ()
 main = do
   x <- readWordBank wordBankPath
   gen <- getStdGen
-  state <- myMain app $
-    State
-      { _words = map _word $ getRandomWords gen x
-      , _typed = []
-      , _seconds = 0
-      , _target = Left 15
-      }
+  state <-
+    myMain app $
+      State
+        { _words = map _word $ getRandomWords gen x
+        , _typed = []
+        , _seconds = 0
+        , _target = Left 15
+        }
   putStr "WPM: "
-  print $ getWpm  state
+  print $ getWpm state
   putStr "How many words you typed: "
   print . length . words $ _typed state
