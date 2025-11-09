@@ -1,7 +1,7 @@
-module Types.WordItem (WordItem(..), parseWordMaybe) where
+module Types.WordItem (WordItem (..), parseWordMaybe) where
 
-import Text.Read (readMaybe)
 import Data.List ((!?))
+import Text.Read (readMaybe)
 
 data WordItem = WordItem
   { _word :: String
@@ -15,4 +15,3 @@ parseWordMaybe x = WordItem <$> word <*> weight
   broken = words x
   word = broken !? 0
   weight = (broken !? 1) >>= readMaybe
-
