@@ -33,7 +33,8 @@ data State = State
   , _target :: Either Time Int -- Either Time or Words
   }
 
-type WidgetID = ()
+data WidgetID = WidgetID () | WidgetId Int
+  deriving (Eq, Ord)
 
 -- #### CONSTANTS ####
 
@@ -117,7 +118,7 @@ draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
   wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
    where
     cursor :: Widget WidgetID -> Widget WidgetID
-    cursor x = Brick.showCursor () (Location (xPos, yPos)) x
+    cursor x = Brick.showCursor (WidgetID ()) (Location (xPos, yPos)) x
      where
       xPos = index `mod` (width - 1)
       yPos = index `div` (width - 1) :: Int
@@ -130,8 +131,6 @@ draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
               + if last typed == ' '
                 then 1
                 else 0
-       where
-
     space = intercalate [str " "]
     wordsToBeDisplayed = zipWithM g theWords $ words typed
      where
@@ -151,7 +150,7 @@ draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
   lastTypedWord = last typedWords
   seconds = getStateTime s
 
-handleEvent :: BrickEvent () CustomEvents -> EventM () State ()
+handleEvent :: BrickEvent WidgetID CustomEvents -> EventM WidgetID State ()
 handleEvent (AppEvent Tick) = do
   timesUp <- getGamesUp <$> get
   if not timesUp
