@@ -6,18 +6,27 @@ module State (
   getStateTime,
   delay,
   microDelay,
+  generateStatePure,
+  generateState,
 ) where
 
-import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import Brick (App (..), BrickEvent (AppEvent, MouseDown, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>), padLeftRight)
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center)
+import Button (Button (..), compileButtons)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Function (on)
 import Data.List (intercalate)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import qualified Graphics.Vty as V
 import qualified Graphics.Vty.Platform.Unix as V.Vty
+import System.Random (StdGen, newStdGen)
+import Types.WidgetID
+import qualified Types.WidgetID as Types
+import Types.WordBank (WordBank, getRandomWords, parseWordBank, readWordBank, wordBankPath)
+import Types.WordItem (WordItem (..))
 import Util (breakChunks, initSafe, log10, roundTo, snoc, trim, zipWithM)
 
 -- #### TYPES ####
@@ -32,9 +41,6 @@ data State = State
   , _seconds :: Time
   , _target :: Either Time Int -- Either Time or Words
   }
-
-data WidgetID = WidgetID () | WidgetId Int
-  deriving (Eq, Ord)
 
 -- #### CONSTANTS ####
 
@@ -70,7 +76,24 @@ main start = do
   vty <- buildVty
   chan <- newBChan 20
   void . forkIO . forever $ writeBChan chan Tick >> threadDelay microDelay
+  let output = V.outputIface vty
+  when (V.supportsMode output V.Mouse) $ liftIO $ V.setMode output V.Mouse True
   customMain vty buildVty (Just chan) app start
+
+generateStatePure :: WordBank -> StdGen -> State
+generateStatePure bank gen =
+  State
+    { _words = map _word $ getRandomWords gen bank
+    , _typed = []
+    , _target = Left 15
+    , _seconds = 0
+    }
+
+generateState :: IO State
+generateState = do
+  gen <- newStdGen
+  bank <- readWordBank wordBankPath
+  return $ generateStatePure bank gen
 
 -- #### STATE INFO ####
 
@@ -110,10 +133,29 @@ setTarget target (State a b c _) = State a b c target
 -- #### APP FUNCTIONS ####
 
 draw :: State -> [Widget WidgetID]
-draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
+draw s = buttonWidgets ++ [center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid]
  where
   secondsWid = str . show $ seconds
   wmpWid = str . show . roundTo (1 :: Int) $ getWpm s
+
+  buttonWidgets = [timeButtons]
+   where
+    wordButtons =
+      compileButtons $
+        [ Button.Button "15 Words" (Types.WidgetID.Button (SetWords 15))
+        , Button.Button "30 Words" (Types.WidgetID.Button (SetWords 30))
+        , Button.Button "45 Words" (Types.WidgetID.Button (SetWords 45))
+        ]
+    timeButtons =
+      let
+        compiled =
+          compileButtons $
+            [ Button.Button "15s" (Types.WidgetID.Button (SetTime 15))
+            , Button.Button "30s" (Types.WidgetID.Button (SetTime 30))
+            , Button.Button "45s" (Types.WidgetID.Button (SetTime 45))
+            ]
+       in
+        hBox $ map (padLeftRight 1) compiled
 
   wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
    where
@@ -158,4 +200,7 @@ handleEvent (AppEvent Tick) = do
     else halt
 handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
 handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
-handleEvent _ = halt
+handleEvent (MouseDown (Types.WidgetID.Button (SetWords x)) _ _ _) = modify (setTarget $ Right x)
+handleEvent (MouseDown (Types.WidgetID.Button (SetTime x)) _ _ _) = modify (setTarget . Left $ fromIntegral x)
+handleEvent (VtyEvent (EvKey V.KEsc _)) = halt
+handleEvent _ = return ()

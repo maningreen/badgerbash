@@ -75,8 +75,10 @@ executable badgerBash
     other-modules: 
       Types.WordItem 
       Types.WordBank 
+      Types.WidgetID
       State 
       Util
+      Button
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
