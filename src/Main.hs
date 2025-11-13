@@ -6,6 +6,8 @@ import qualified State as S
 main :: IO ()
 main = do
   state <- S.main =<< generateState
+  putStr "WPM raw: "
+  print $ S.getWpmRaw state
   putStr "WPM: "
   print $ S.getWpm state
   putStr "How many words you typed: "

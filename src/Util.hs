@@ -115,3 +115,9 @@ trim (x : xs) = x : trim xs
 
 log10 :: (Floating a) => a -> a
 log10 = logBase 10
+
+-- A constant to represent the length (in characters)
+-- of a word
+-- not specific, and general
+wordLength :: Num a => a
+wordLength = 5

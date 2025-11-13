@@ -2,6 +2,7 @@ module State (
   State (..),
   Time,
   main,
+  getWpmRaw,
   getWpm,
   getStateTime,
   delay,
@@ -14,7 +15,7 @@ import Brick (App (..), BrickEvent (AppEvent, MouseDown, VtyEvent), EventM, Loca
 import qualified Brick as B
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center, hCenter)
-import Button (Button (..), compileButtons, compileButtonsId)
+import Button (Button (..), compileButtonsId)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -28,7 +29,7 @@ import Types.WidgetID
 import qualified Types.WidgetID as WidgetID
 import Types.WordBank (WordBank, getRandomWords, readWordBank, wordBankPath)
 import Types.WordItem (WordItem (..))
-import Util (Time, breakChunks, initSafe, log10, mapIfElse, roundTo, snoc, trim, zipWithM)
+import Util (Time, breakChunks, initSafe, log10, mapIfElse, roundTo, snoc, trim, zipWithM, wordLength)
 
 -- #### TYPES ####
 
@@ -107,8 +108,8 @@ truncateTime = roundTo digitCount
  where
   digitCount = round $ log10 (1 / delay) :: Int
 
-getWpm :: State -> Float
-getWpm state
+getWpmRaw :: State -> Float
+getWpmRaw state
   -- if the wpm is invalid then we simply report 0, chances are nothing's been typed
   | isNaN wpm || isInfinite wpm = 0
   -- if the time (s) is too low then it leads to an inaccurate measurement
@@ -117,7 +118,22 @@ getWpm state
   | otherwise = wpm
  where
   tau = 5
-  wpm = 60 * (fromIntegral . length . words $ _typed state) / (getStateTime state)
+  typed = _typed state
+  wpm = 60 * (fromIntegral (length typed) / wordLength) / _seconds state
+
+-- follows a similar logic to getWpmRaw
+getWpm :: State -> Float
+getWpm state
+  | isNaN wpm || isInfinite wpm = 0
+  | _seconds state < tau = 0
+  | otherwise = wpm
+ where
+  tau = 5
+  typed = words $ _typed state
+  genned = take 200 $ _words state
+  wpm = let 
+      correctChars = filter id . concat $ zipWith (zipWith (==)) genned $ typed
+    in 60 * ((fromIntegral $ (length typed - 1) + (length correctChars)) / wordLength) / _seconds state
 
 -- #### STATE MANIPULATIONS #####
 
@@ -142,7 +158,7 @@ setTarget target (State a b c _) = State a b c target
 -- #### APP FUNCTIONS ####
 
 draw :: State -> [Widget WidgetID]
-draw s = [buttonWidgets, center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid]
+draw s = return . center . vBox $ [buttonWidgets, hCenter $ secondsWid <+> str " " <+> wmpWid <=> wordsWid]
  where
   secondsWid = case _target s of
     Left sec -> str . show . truncateTime $ sec - seconds
@@ -167,10 +183,10 @@ draw s = [buttonWidgets, center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
         , Button.Button "30s" (WidgetID.Button (SetTime 30))
         , Button.Button "45s" (WidgetID.Button (SetTime 45))
         ]
-      where
-        predicate (_, (WidgetID.Button (SetTime x))) = Left x == _target s
-        predicate _ = False
-        f = withAttr (attrName "selectedTarget") . fst
+     where
+      predicate (_, (WidgetID.Button (SetTime x))) = Left x == _target s
+      predicate _ = False
+      f = withAttr (attrName "selectedTarget") . fst
 
   wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
    where
