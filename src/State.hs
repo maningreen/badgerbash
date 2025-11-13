@@ -11,9 +11,10 @@ module State (
 ) where
 
 import Brick (App (..), BrickEvent (AppEvent, MouseDown, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, padLeftRight, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import qualified Brick as B
 import Brick.BChan (newBChan, writeBChan)
 import Brick.Widgets.Center (center, hCenter)
-import Button (Button (..), compileButtons)
+import Button (Button (..), compileButtons, compileButtonsId)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -27,13 +28,11 @@ import Types.WidgetID
 import qualified Types.WidgetID as WidgetID
 import Types.WordBank (WordBank, getRandomWords, readWordBank, wordBankPath)
 import Types.WordItem (WordItem (..))
-import Util (breakChunks, initSafe, log10, roundTo, snoc, trim, zipWithM)
+import Util (Time, breakChunks, initSafe, log10, mapIfElse, roundTo, snoc, trim, zipWithM)
 
 -- #### TYPES ####
 
 data CustomEvents = Tick
-
-type Time = Float
 
 data State = State
   { _words :: [String]
@@ -58,6 +57,7 @@ app =
             [ (attrName "default", fg black)
             , (attrName "wrong", fg red)
             , (attrName "typed", fg white)
+            , (attrName "selectedTarget", black `B.on` white)
             ]
     }
 
@@ -152,17 +152,25 @@ draw s = [buttonWidgets, center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
   buttonWidgets = hCenter $ (timeButtons <+> wordButtons)
    where
     wordButtons =
-      hBox . map (padLeftRight 1) . compileButtons $
+      hBox . map (padLeftRight 1) . mapIfElse predicate f fst . compileButtonsId $
         [ Button.Button "15w" (WidgetID.Button (SetWords 15))
         , Button.Button "30w" (WidgetID.Button (SetWords 30))
         , Button.Button "45w" (WidgetID.Button (SetWords 45))
         ]
+     where
+      predicate (_, (WidgetID.Button (SetWords x))) = Right x == _target s
+      predicate _ = False
+      f = withAttr (attrName "selectedTarget") . fst
     timeButtons =
-      hBox . map (padLeftRight 1) . compileButtons $
+      hBox . map (padLeftRight 1) . mapIfElse predicate f fst . compileButtonsId $
         [ Button.Button "15s" (WidgetID.Button (SetTime 15))
         , Button.Button "30s" (WidgetID.Button (SetTime 30))
         , Button.Button "45s" (WidgetID.Button (SetTime 45))
         ]
+      where
+        predicate (_, (WidgetID.Button (SetTime x))) = Left x == _target s
+        predicate _ = False
+        f = withAttr (attrName "selectedTarget") . fst
 
   wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
    where
@@ -208,6 +216,6 @@ handleEvent (AppEvent Tick) = do
 handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
 handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
 handleEvent (MouseDown (WidgetID.Button (SetWords x)) _ _ _) = modify (setTarget $ Right x)
-handleEvent (MouseDown (WidgetID.Button (SetTime x)) _ _ _) = modify (setTarget . Left $ fromIntegral x)
+handleEvent (MouseDown (WidgetID.Button (SetTime x)) _ _ _) = modify (setTarget $ Left x)
 handleEvent (VtyEvent (EvKey V.KEsc _)) = halt
 handleEvent _ = return ()

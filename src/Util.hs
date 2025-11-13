@@ -3,6 +3,8 @@ module Util where
 
 import Brick (AttrName, Widget, str, withAttr, (<+>))
 
+type Time = Float
+
 foldFind :: (b -> a -> (b, Bool)) -> b -> [a] -> (b, Maybe a)
 foldFind _ acc [] = (acc, Nothing)
 foldFind f acc (x : xs)
@@ -30,6 +32,19 @@ applyAttrToListW _ _ [] = str ""
 applyAttrToListW g f (x : xs) = withAttr attr (g x) <+> applyAttrToListW g f xs
  where
   attr = f x
+
+-- mapIf (cont True) id == map
+-- mapIf (cont False) _ == map
+-- applies a function to all items which fufill the predicate
+mapIf :: (a -> Bool) -> (a -> a) -> [a] -> [a]
+mapIf predicate f = map (\x -> if predicate x then f x else x)
+
+-- mapIf (cont True) id == map
+-- mapIf (cont False) _ == map
+-- applies f() to all items which fufill the predicate
+-- otherwise applies g()
+mapIfElse :: (a -> Bool) -> (a -> b) -> (a -> b) -> [a] -> [b]
+mapIfElse predicate f g = map (\x -> if predicate x then f x else g x)
 
 breakChunks :: Int -> [a] -> [[a]]
 breakChunks _ [] = []
