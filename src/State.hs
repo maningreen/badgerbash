@@ -2,29 +2,38 @@ module State (
   State (..),
   Time,
   main,
+  getWpmRaw,
   getWpm,
   getStateTime,
   delay,
   microDelay,
+  generateStatePure,
+  generateState,
 ) where
 
-import Brick (App (..), BrickEvent (AppEvent, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import Brick (App (..), BrickEvent (AppEvent, MouseDown, VtyEvent), EventM, Location (Location), Widget, attrMap, attrName, customMain, fg, get, hBox, hLimit, halt, modify, padLeftRight, showCursor, showFirstCursor, str, vBox, vLimit, withAttr, (<+>), (<=>))
+import qualified Brick as B
 import Brick.BChan (newBChan, writeBChan)
-import Brick.Widgets.Center (center)
+import Brick.Widgets.Center (center, hCenter)
+import Button (Button (..), compileButtonsId)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Function (on)
 import Data.List (intercalate)
 import Graphics.Vty (Event (EvKey), Key (KBS, KChar), black, defAttr, red, white)
 import qualified Graphics.Vty as V
 import qualified Graphics.Vty.Platform.Unix as V.Vty
-import Util (breakChunks, initSafe, log10, roundTo, snoc, trim, zipWithM)
+import System.Random (StdGen, newStdGen)
+import Types.WidgetID
+import qualified Types.WidgetID as WidgetID
+import Types.WordBank (WordBank, getRandomWords, readWordBank, wordBankPath)
+import Types.WordItem (WordItem (..))
+import Util (Time, breakChunks, initSafe, log10, mapIfElse, roundTo, snoc, trim, zipWithM, wordLength)
 
 -- #### TYPES ####
 
 data CustomEvents = Tick
-
-type Time = Float
 
 data State = State
   { _words :: [String]
@@ -32,8 +41,6 @@ data State = State
   , _seconds :: Time
   , _target :: Either Time Int -- Either Time or Words
   }
-
-type WidgetID = ()
 
 -- #### CONSTANTS ####
 
@@ -51,6 +58,7 @@ app =
             [ (attrName "default", fg black)
             , (attrName "wrong", fg red)
             , (attrName "typed", fg white)
+            , (attrName "selectedTarget", black `B.on` white)
             ]
     }
 
@@ -69,22 +77,63 @@ main start = do
   vty <- buildVty
   chan <- newBChan 20
   void . forkIO . forever $ writeBChan chan Tick >> threadDelay microDelay
+  let output = V.outputIface vty
+  when (V.supportsMode output V.Mouse) $ liftIO $ V.setMode output V.Mouse True
   customMain vty buildVty (Just chan) app start
+
+generateStatePure :: WordBank -> StdGen -> State
+generateStatePure bank gen =
+  State
+    { _words = map _word $ getRandomWords gen bank
+    , _typed = []
+    , _target = Left 15
+    , _seconds = 0
+    }
+
+generateState :: IO State
+generateState = do
+  gen <- newStdGen
+  bank <- readWordBank wordBankPath
+  return $ generateStatePure bank gen
 
 -- #### STATE INFO ####
 
 -- returns the time truncated
-getStateTime :: State -> Float
-getStateTime = roundTo digitCount . _seconds
+getStateTime :: State -> Time
+getStateTime = truncateTime . _seconds
+
+-- returns the time truncated
+truncateTime :: Time -> Time
+truncateTime = roundTo digitCount
  where
   digitCount = round $ log10 (1 / delay) :: Int
 
+getWpmRaw :: State -> Float
+getWpmRaw state
+  -- if the wpm is invalid then we simply report 0, chances are nothing's been typed
+  | isNaN wpm || isInfinite wpm = 0
+  -- if the time (s) is too low then it leads to an inaccurate measurement
+  | _seconds state < tau = 0
+  -- it's a-o-k :)
+  | otherwise = wpm
+ where
+  tau = 5
+  typed = _typed state
+  wpm = 60 * (fromIntegral (length typed) / wordLength) / _seconds state
+
+-- follows a similar logic to getWpmRaw
 getWpm :: State -> Float
 getWpm state
   | isNaN wpm || isInfinite wpm = 0
+  | _seconds state < tau = 0
   | otherwise = wpm
  where
-  wpm = 60 * (fromIntegral . length . words $ _typed state) / (getStateTime state)
+  tau = 5
+  typed = words $ _typed state
+  genned = take 200 $ _words state
+  wpm = let 
+      correctChars = filter id . concat $ zipWith (zipWith (==)) genned $ typed
+    in 60 * ((fromIntegral $ (length typed - 1) + (length correctChars)) / wordLength) / _seconds state
 
 -- #### STATE MANIPULATIONS #####
 
@@ -109,15 +158,40 @@ setTarget target (State a b c _) = State a b c target
 -- #### APP FUNCTIONS ####
 
 draw :: State -> [Widget WidgetID]
-draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
+draw s = return . center . vBox $ [buttonWidgets, hCenter $ secondsWid <+> str " " <+> wmpWid <=> wordsWid]
  where
-  secondsWid = str . show $ seconds
+  secondsWid = case _target s of
+    Left sec -> str . show . truncateTime $ sec - seconds
+    Right word -> str . show $ word - length typedWords
   wmpWid = str . show . roundTo (1 :: Int) $ getWpm s
+
+  buttonWidgets = hCenter $ (timeButtons <+> wordButtons)
+   where
+    wordButtons =
+      hBox . map (padLeftRight 1) . mapIfElse predicate f fst . compileButtonsId $
+        [ Button.Button "15w" (WidgetID.Button (SetWords 15))
+        , Button.Button "30w" (WidgetID.Button (SetWords 30))
+        , Button.Button "45w" (WidgetID.Button (SetWords 45))
+        ]
+     where
+      predicate (_, (WidgetID.Button (SetWords x))) = Right x == _target s
+      predicate _ = False
+      f = withAttr (attrName "selectedTarget") . fst
+    timeButtons =
+      hBox . map (padLeftRight 1) . mapIfElse predicate f fst . compileButtonsId $
+        [ Button.Button "15s" (WidgetID.Button (SetTime 15))
+        , Button.Button "30s" (WidgetID.Button (SetTime 30))
+        , Button.Button "45s" (WidgetID.Button (SetTime 45))
+        ]
+     where
+      predicate (_, (WidgetID.Button (SetTime x))) = Left x == _target s
+      predicate _ = False
+      f = withAttr (attrName "selectedTarget") . fst
 
   wordsWid = cursor . hLimit width . vLimit height . vBox . map hBox . breakChunks width . space $ wordsToBeDisplayed
    where
     cursor :: Widget WidgetID -> Widget WidgetID
-    cursor x = Brick.showCursor () (Location (xPos, yPos)) x
+    cursor x = Brick.showCursor (WidgetID ()) (Location (xPos, yPos)) x
      where
       xPos = index `mod` (width - 1)
       yPos = index `div` (width - 1) :: Int
@@ -130,8 +204,6 @@ draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
               + if last typed == ' '
                 then 1
                 else 0
-       where
-
     space = intercalate [str " "]
     wordsToBeDisplayed = zipWithM g theWords $ words typed
      where
@@ -151,7 +223,7 @@ draw s = return . center $ secondsWid <+> str " " <+> wmpWid <=> wordsWid
   lastTypedWord = last typedWords
   seconds = getStateTime s
 
-handleEvent :: BrickEvent () CustomEvents -> EventM () State ()
+handleEvent :: BrickEvent WidgetID CustomEvents -> EventM WidgetID State ()
 handleEvent (AppEvent Tick) = do
   timesUp <- getGamesUp <$> get
   if not timesUp
@@ -159,4 +231,7 @@ handleEvent (AppEvent Tick) = do
     else halt
 handleEvent (VtyEvent (EvKey (KChar c) [])) = modify $ addCharToTyped c
 handleEvent (VtyEvent (EvKey KBS [])) = modify dropLastTyped
-handleEvent _ = halt
+handleEvent (MouseDown (WidgetID.Button (SetWords x)) _ _ _) = modify (setTarget $ Right x)
+handleEvent (MouseDown (WidgetID.Button (SetTime x)) _ _ _) = modify (setTarget $ Left x)
+handleEvent (VtyEvent (EvKey V.KEsc _)) = halt
+handleEvent _ = return ()
